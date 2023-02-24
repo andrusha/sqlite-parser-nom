@@ -64,7 +64,7 @@ mod tests {
         assert_eq!(result.pages.len(), 2); // root page + 1 empty page
 
         match result.pages.first().unwrap() {
-            Page::LeafTablePage(p) => {
+            Page::LeafTable(p) => {
                 assert_eq!(p.header.no_cells, 1);
                 assert_eq!(p.cells.len(), 1);
                 assert_eq!(
@@ -90,7 +90,7 @@ mod tests {
         }
 
         match result.pages.last().unwrap() {
-            Page::LeafTablePage(p) => {
+            Page::LeafTable(p) => {
                 assert_eq!(p.header.no_cells, 0);
                 assert_eq!(p.cells.len(), 0);
             }
@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(result.pages.len(), 2); // root page + 1st page with table content
 
         match result.pages.last().unwrap() {
-            Page::LeafTablePage(p) => {
+            Page::LeafTable(p) => {
                 assert_eq!(p.header.no_cells, 1);
                 assert_eq!(p.cells.len(), 1);
                 assert_eq!(p.cells.first().unwrap().rowid, 42);

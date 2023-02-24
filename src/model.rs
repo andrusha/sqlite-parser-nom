@@ -39,10 +39,10 @@ impl PageSize {
 }
 
 pub enum Page {
-    InteriorIndexPage(InteriorIndexPage),
-    LeafIndexPage(LeafIndexPage),
-    InteriorTablePage(InteriorTablePage),
-    LeafTablePage(LeafTablePage),
+    InteriorIndex(InteriorIndexPage),
+    LeafIndex(LeafIndexPage),
+    InteriorTable(InteriorTablePage),
+    LeafTable(LeafTablePage),
 }
 
 pub struct InteriorPageHeader {

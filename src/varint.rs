@@ -14,10 +14,11 @@ pub fn be_u64_varint(i: &[u8]) -> IResult<&[u8], u64> {
             return Ok((&i[id + 1..], res));
         }
     }
-    return Err(Err::Error(ParseError::from_error_kind(
+
+    Err(Err::Error(ParseError::from_error_kind(
         i,
         ErrorKind::MapOpt,
-    )));
+    )))
 }
 
 #[cfg(test)]

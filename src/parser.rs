@@ -27,7 +27,7 @@ pub fn database(i: &[u8]) -> IResult<&[u8], Database> {
 
 fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
     let (i, _) = tag("SQLite format 3\0")(i)?;
-    let (i, page_size) = map(be_u16, |p| PageSize(p))(i)?;
+    let (i, page_size) = map(be_u16, PageSize)(i)?;
     let (i, (write_version, read_version)) = (be_u8, be_u8).parse(i)?;
     let (i, _reserved) = be_u8(i)?;
     let (i, (max_payload_fraction, min_payload_fraction, leaf_payload_fraction)) =
@@ -76,20 +76,20 @@ fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
 fn page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], Page> {
     alt((
         map(interior_index_b_tree_page::<OFFSET>, |p| {
-            Page::InteriorIndexPage(p)
+            Page::InteriorIndex(p)
         }),
-        map(leaf_index_b_tree_page::<OFFSET>, |p| Page::LeafIndexPage(p)),
+        map(leaf_index_b_tree_page::<OFFSET>, Page::LeafIndex),
         map(interior_table_b_tree_page::<OFFSET>, |p| {
-            Page::InteriorTablePage(p)
+            Page::InteriorTable(p)
         }),
-        map(leaf_table_b_tree_page::<OFFSET>, |p| Page::LeafTablePage(p)),
+        map(leaf_table_b_tree_page::<OFFSET>, Page::LeafTable),
     ))(i)
 }
 
 fn interior_page_header(i: &[u8]) -> IResult<&[u8], InteriorPageHeader> {
     let (i, first_freeblock_offset) = map(be_u16, |u| Some(u).filter(|&p| p != 0x0u16))(i)?;
     let (i, no_cells) = be_u16(i)?;
-    let (i, cell_content_offset) = map(be_u16, |u| CellOffset(u))(i)?;
+    let (i, cell_content_offset) = map(be_u16, CellOffset)(i)?;
     let (i, no_fragmented_bytes) = be_u8(i)?;
     let (i, rightmost_pointer) = be_u32(i)?;
 
@@ -108,7 +108,7 @@ fn interior_page_header(i: &[u8]) -> IResult<&[u8], InteriorPageHeader> {
 fn leaf_page_header(i: &[u8]) -> IResult<&[u8], LeafPageHeader> {
     let (i, first_freeblock_offset) = map(be_u16, |u| Some(u).filter(|&p| p != 0x0u16))(i)?;
     let (i, no_cells) = be_u16(i)?;
-    let (i, cell_content_offset) = map(be_u16, |u| CellOffset(u))(i)?;
+    let (i, cell_content_offset) = map(be_u16, CellOffset)(i)?;
     let (i, no_fragmented_bytes) = be_u8(i)?;
 
     Ok((
