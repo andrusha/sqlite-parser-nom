@@ -10,10 +10,10 @@ use crate::error::{OwnedBytes, SQLiteError};
 use crate::model::Database;
 use crate::parser::database;
 
-mod varint;
-mod model;
 mod error;
+mod model;
 mod parser;
+mod varint;
 
 /**
 todo: parse additional page types (overflow, lock, freelist, ?)
@@ -30,16 +30,19 @@ pub fn open<P: AsRef<Path>>(path: P) -> Result<Database, SQLiteError> {
 
     let (_, db) = database(bytes.as_slice())
         .finish()
-        .map_err(|e| nom::error::Error { code: e.code, input: OwnedBytes(e.input.to_owned()) })?;
+        .map_err(|e| nom::error::Error {
+            code: e.code,
+            input: OwnedBytes(e.input.to_owned()),
+        })?;
     Ok(db)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::model::SerialType::{Null, Text, I8};
+    use crate::model::{Page, Payload};
     use rusqlite::Connection;
     use tempfile::tempdir;
-    use crate::model::{Page, Payload};
-    use crate::model::SerialType::{I8, Null, Text};
 
     use super::*;
 
@@ -49,7 +52,11 @@ mod tests {
         let path = dir.path().join("empty.sqlite3");
         // let path = "empty.sqlite3";
         let conn = Connection::open(&path).unwrap();
-        conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)", ()).unwrap();
+        conn.execute(
+            "CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)",
+            (),
+        )
+        .unwrap();
         conn.close().unwrap();
         let result = open(&path).unwrap();
 
@@ -72,11 +79,14 @@ mod tests {
                         Some(Payload::Text("test".to_string())),
                         Some(Payload::Text("test".to_string())),
                         Some(Payload::I8(2)),
-                        Some(Payload::Text("CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)".to_string())),
+                        Some(Payload::Text(
+                            "CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)"
+                                .to_string()
+                        )),
                     ]
                 );
             }
-            _ => unreachable!("root page should be table leaf page")
+            _ => unreachable!("root page should be table leaf page"),
         }
 
         match result.pages.last().unwrap() {
@@ -84,7 +94,7 @@ mod tests {
                 assert_eq!(p.header.no_cells, 0);
                 assert_eq!(p.cells.len(), 0);
             }
-            _ => unreachable!("second page should be leaf page")
+            _ => unreachable!("second page should be leaf page"),
         }
     }
 
@@ -93,8 +103,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("empty.sqlite3");
         let conn = Connection::open(&path).unwrap();
-        conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)", ()).unwrap();
-        conn.execute("INSERT INTO test VALUES (42, 'tjena tjena')", ()).unwrap();
+        conn.execute(
+            "CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)",
+            (),
+        )
+        .unwrap();
+        conn.execute("INSERT INTO test VALUES (42, 'tjena tjena')", ())
+            .unwrap();
         conn.close().unwrap();
         let result = open(&path).unwrap();
 
@@ -112,13 +127,10 @@ mod tests {
                 );
                 assert_eq!(
                     p.cells.first().unwrap().payload.column_values,
-                    vec![
-                        None,
-                        Some(Payload::Text("tjena tjena".to_string())),
-                    ]
+                    vec![None, Some(Payload::Text("tjena tjena".to_string())),]
                 );
             }
-            _ => unreachable!("root page should be table leaf page")
+            _ => unreachable!("root page should be table leaf page"),
         }
     }
 }

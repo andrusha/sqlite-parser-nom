@@ -1,5 +1,5 @@
-use nom::Err;
 use nom::error::{ErrorKind, ParseError};
+use nom::Err;
 use nom::IResult;
 
 pub fn be_u64_varint(i: &[u8]) -> IResult<&[u8], u64> {
@@ -14,7 +14,10 @@ pub fn be_u64_varint(i: &[u8]) -> IResult<&[u8], u64> {
             return Ok((&i[id + 1..], res));
         }
     }
-    return Err(Err::Error(ParseError::from_error_kind(i, ErrorKind::MapOpt)));
+    return Err(Err::Error(ParseError::from_error_kind(
+        i,
+        ErrorKind::MapOpt,
+    )));
 }
 
 #[cfg(test)]
@@ -59,7 +62,13 @@ mod tests {
 
     #[test]
     fn parse_5_byte() {
-        let varint = [0b1000_1111, 0b1000_1110, 0b1000_0111, 0b1000_1101, 0b0000_1011];
+        let varint = [
+            0b1000_1111,
+            0b1000_1110,
+            0b1000_0111,
+            0b1000_1101,
+            0b0000_1011,
+        ];
         let (i, res) = be_u64_varint(&varint).unwrap();
 
         assert!(i.is_empty());
@@ -68,7 +77,14 @@ mod tests {
 
     #[test]
     fn ignore_rest() {
-        let varint = [0b1000_1111, 0b1000_1110, 0b1000_0111, 0b1000_1101, 0b0000_1011, 0b0];
+        let varint = [
+            0b1000_1111,
+            0b1000_1110,
+            0b1000_0111,
+            0b1000_1101,
+            0b0000_1011,
+            0b0,
+        ];
         let (i, _) = be_u64_varint(&varint).unwrap();
 
         assert_eq!(i.len(), 1);

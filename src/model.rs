@@ -33,7 +33,7 @@ impl PageSize {
     pub fn real_size(&self) -> usize {
         match self.0 {
             1 => 0x1_00_00,
-            _ => self.0.into()
+            _ => self.0.into(),
         }
     }
 }
@@ -90,7 +90,7 @@ impl CellOffset {
     pub fn real_offset(&self) -> u32 {
         match self.0 {
             0 => 0x1_00_00,
-            _ => self.0.into()
+            _ => self.0.into(),
         }
     }
 }
@@ -167,7 +167,7 @@ impl From<u64> for SerialType {
             10 | 11 => Reserved,
             n if n >= 12 && n % 2 == 0 => Blob(n),
             n if n >= 13 && n % 2 == 1 => Text(n),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -200,7 +200,7 @@ pub enum Payload {
     I64(i64),
     F64(f64),
     Blob(Vec<u8>),
-    Text(String)
+    Text(String),
 }
 
 #[cfg(test)]
