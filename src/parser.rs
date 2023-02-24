@@ -159,9 +159,9 @@ fn be_i48(i: &[u8]) -> IResult<&[u8], i64> {
     Ok((i, x as i64))
 }
 
-fn column_values<'a, 'b>(
+fn column_values<'a>(
     i: &'a [u8],
-    serial_types: &'b [SerialType],
+    serial_types: &[SerialType],
 ) -> IResult<&'a [u8], Vec<Option<Payload>>> {
     let mut i: &[u8] = i;
     let mut res = Vec::with_capacity(serial_types.len());
