@@ -1,9 +1,8 @@
 [package]
-name = "sqlite-parser-nom"
+name = "sqlite-parser"
 version = "0.1.0"
+authors = ["Andrew Korzhuev <korzhuev@andrusha.me>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 nom = "7.1.1"
