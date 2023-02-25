@@ -10,5 +10,5 @@ nom = "7.1.1"
 thiserror = "1.0.38"
 
 [dev-dependencies]
-rusqlite = "0.28.0"
+rusqlite = { version = "0.28.0", features = ["bundled"] }
 tempfile = "3.3.0"
