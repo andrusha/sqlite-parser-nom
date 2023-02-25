@@ -1,5 +1,5 @@
 [package]
-name = "sqlite-parser"
+name = "sqlite-parser-nom"
 version = "0.1.0"
 authors = ["Andrew Korzhuev <korzhuev@andrusha.me>"]
 edition = "2021"

@@ -1,5 +1,12 @@
-# sqlite-parser
-SQLite database format parser.
+# sqlite-parser-nom
+
+SQLite binary database format parser.
+
+Homonym libraries:
+
+- Unlike [sqlite_parser](https://crates.io/crates/sqlite_parser), which is a front-end
+  to [rusqlite](https://crates.io/crates/rusqlite), actually parses the file and gives access to binary content as-is.
+- [sqlite3-parser](https://crates.io/crates/sqlite3-parser) is parser + lexer for SQLite3-compatible SQL grammar.
 
 ## Usage
 
