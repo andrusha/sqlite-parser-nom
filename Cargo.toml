@@ -3,6 +3,13 @@ name = "sqlite-parser"
 version = "0.1.0"
 authors = ["Andrew Korzhuev <korzhuev@andrusha.me>"]
 edition = "2021"
+description = "SQLite database file parser"
+repository = "https://github.com/mycelial/sqlite-parser"
+documentation = "http://docs.rs/sqlite-parser/"
+readme = "README.md"
+keywords = ["sqlite", "database", "nom", "parser"]
+license = "Apache-2.0"
+categories = ["database", "parser-implementations"]
 
 [dependencies]
 nom = "7.1.1"
