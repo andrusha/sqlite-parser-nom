@@ -4,8 +4,9 @@ use nom::bytes::complete::take;
 use nom::combinator::{complete, map, map_parser};
 use nom::multi::{count, many0};
 use nom::number::complete::{be_f64, be_i16, be_i24, be_i32, be_i64, be_i8, be_u16, be_u32, be_u8};
-use nom::sequence::{pair, Tuple};
+use nom::sequence::Tuple;
 use nom::IResult;
+use crate::be_i48;
 
 use crate::model::*;
 use crate::varint::be_u64_varint;
@@ -149,16 +150,6 @@ fn column_types(i: &[u8]) -> IResult<&[u8], Vec<SerialType>> {
     complete(many0(map(be_u64_varint, SerialType::from)))(i)
 }
 
-fn be_i48(i: &[u8]) -> IResult<&[u8], i64> {
-    let (i, (head, tail)) = pair(be_u16, be_u32)(i)?;
-    let mut x = (head as u64) << 32 | (tail as u64);
-    if x & 0x80_00_00_00_00_00 != 0 {
-        x |= 0xff_ff_00_00_00_00_00_00;
-    };
-
-    Ok((i, x as i64))
-}
-
 fn column_values<'a>(
     i: &'a [u8],
     serial_types: &[SerialType],
@@ -172,7 +163,7 @@ fn column_values<'a>(
             SerialType::I16 => map(be_i16, |x| Some(Payload::I16(x)))(i),
             SerialType::I24 => map(be_i24, |x| Some(Payload::I32(x)))(i),
             SerialType::I32 => map(be_i32, |x| Some(Payload::I32(x)))(i),
-            SerialType::I48 => map(be_i48, |x| Some(Payload::I64(x)))(i),
+            SerialType::I48 => map(be_i48::be_i48, |x| Some(Payload::I64(x)))(i),
             SerialType::I64 => map(be_i64, |x| Some(Payload::I64(x)))(i),
             SerialType::F64 => map(be_f64, |x| Some(Payload::F64(x)))(i),
             SerialType::Const0 => Ok((i, Some(Payload::I8(0)))),
