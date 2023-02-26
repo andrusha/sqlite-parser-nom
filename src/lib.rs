@@ -1,3 +1,4 @@
+#![doc(issue_tracker_base_url = "https://github.com/mycelial/sqlite-parser-nom/issues", test(no_crate_inject))]
 #![doc = include_str!("../README.md")]
 
 extern crate core;
@@ -12,9 +13,9 @@ use crate::error::{OwnedBytes, SQLiteError};
 use crate::model::Database;
 use crate::parser::database;
 
-mod error;
-mod model;
-mod parser;
+pub mod error;
+pub mod model;
+pub mod parser;
 mod varint;
 mod be_i48;
 
@@ -33,8 +34,6 @@ todo: add mmap option for reading
 /// Recommended way is to use specific parsers based on your needs instead.
 ///
 /// ```
-/// use sqlite_parser_nom;
-///
 /// let database = sqlite_parser_nom::open("database.sqlite3");
 /// ```
 // todo: pass file as bytes and take page-by-page from it to avoid reading all bytes
