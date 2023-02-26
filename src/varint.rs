@@ -2,6 +2,10 @@ use nom::error::{ErrorKind, ParseError};
 use nom::Err;
 use nom::IResult;
 
+/// Big-endian unsigned varint (huffman coding) implementation.
+///
+/// Most-significant bit is used as a flag if next byte should taken.
+/// It is discarded and the rest are concatenated into resulting integer.
 pub fn be_u64_varint(i: &[u8]) -> IResult<&[u8], u64> {
     let mut res = 0;
     // to guard from overflow

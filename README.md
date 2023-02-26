@@ -46,7 +46,7 @@ References:
 
 #### Database file
 
-```
+```text
 +---+-------+-----------+-----------+-----------+
 | h |       |           |           |           |
 | e |       |           |           |           |
@@ -67,7 +67,7 @@ References:
 
 #### Page
 
-```
+```text
 +---------------------+
 |     page header     |
 +---------------------+
@@ -102,7 +102,7 @@ Page structure:
 
 #### Cell
 
-```
+```text
 +-----------+--------+--------+--------+-----+--------+-----------+-----+-----------+
 |Payload    |        | Header | Serial |     | Serial | Data Cell |     | Data Cell |
 |(Cell Size)|  ...   |  Size  | Type 1 | ... | Type N | Column 1  | ... | Column N  |

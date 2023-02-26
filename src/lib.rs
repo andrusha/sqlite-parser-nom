@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 extern crate core;
 
 use std::fs::File;
@@ -14,15 +16,28 @@ mod error;
 mod model;
 mod parser;
 mod varint;
+mod be_i48;
 
-/**
+/*
 todo: parse additional page types (overflow, lock, freelist, ?)
 todo: determine when overflow page no is used
 todo: how page size computation works?
 todo: test with more records
 todo: how freelist pages work?
- **/
+todo: add mmap option for reading
+*/
 
+/// Loads the whole file in memory, does copying while parsing as well
+/// hence, requires at least 2x of free memory of original file size.
+///
+/// Recommended way is to use specific parsers based on your needs instead.
+///
+/// ```
+/// use sqlite_parser_nom;
+///
+/// let database = sqlite_parser_nom::open("database.sqlite3");
+/// ```
+// todo: pass file as bytes and take page-by-page from it to avoid reading all bytes
 pub fn open<P: AsRef<Path>>(path: P) -> Result<Database, SQLiteError> {
     let mut file = File::open(path)?;
     let mut bytes = Vec::new();
