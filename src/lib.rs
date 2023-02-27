@@ -1,4 +1,7 @@
-#![doc(issue_tracker_base_url = "https://github.com/mycelial/sqlite-parser-nom/issues", test(no_crate_inject))]
+#![doc(
+    issue_tracker_base_url = "https://github.com/mycelial/sqlite-parser-nom/issues",
+    test(no_crate_inject)
+)]
 #![doc = include_str!("../README.md")]
 
 extern crate core;
@@ -13,11 +16,11 @@ use crate::error::{OwnedBytes, SQLiteError};
 use crate::model::Database;
 use crate::parser::database;
 
+mod be_i48;
 pub mod error;
 pub mod model;
 pub mod parser;
 mod varint;
-mod be_i48;
 
 /*
 todo: parse additional page types (overflow, lock, freelist, ?)

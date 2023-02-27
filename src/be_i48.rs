@@ -1,6 +1,6 @@
-use nom::IResult;
-use nom::sequence::pair;
 use nom::number::complete::{be_u16, be_u32};
+use nom::sequence::pair;
+use nom::IResult;
 
 /// Big-ending signed 48-bit two-complimentary integer
 pub fn be_i48(i: &[u8]) -> IResult<&[u8], i64> {

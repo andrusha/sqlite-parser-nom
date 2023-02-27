@@ -1,3 +1,5 @@
+use crate::error::SQLiteError;
+
 #[allow(dead_code)]
 pub struct Database {
     pub header: DbHeader,
@@ -19,7 +21,7 @@ pub struct DbHeader {
     pub schema_format_no: u32,
     pub default_page_cache_size: u32,
     pub no_largest_root_b_tree: u32,
-    pub db_text_encoding: u32,
+    pub db_text_encoding: TextEncoding,
     pub user_version: u32,
     pub incremental_vacuum_mode: u32,
     pub application_id: u32,
@@ -34,6 +36,28 @@ impl PageSize {
         match self.0 {
             1 => 0x1_00_00,
             _ => self.0.into(),
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum TextEncoding {
+    Utf8,
+    Utf16Le,
+    Utf16Be,
+}
+
+impl TryFrom<u32> for TextEncoding {
+    type Error = SQLiteError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        use TextEncoding::*;
+
+        match value {
+            1 => Ok(Utf8),
+            2 => Ok(Utf16Le),
+            3 => Ok(Utf16Be),
+            _ => Err(SQLiteError::UnknownTextEncodingError(value)),
         }
     }
 }

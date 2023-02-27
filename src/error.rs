@@ -7,6 +7,9 @@ pub enum SQLiteError {
 
     #[error(transparent)]
     ParsingError(#[from] nom::error::Error<OwnedBytes>),
+
+    #[error("unknown text encoding `{0}`")]
+    UnknownTextEncodingError(u32),
 }
 
 #[derive(Debug)]

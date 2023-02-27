@@ -1,12 +1,15 @@
+use crate::be_i48;
+use be_i48::be_i48;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take;
-use nom::combinator::{complete, map, map_parser};
-use nom::multi::{count, many0};
-use nom::number::complete::{be_f64, be_i16, be_i24, be_i32, be_i64, be_i8, be_u16, be_u32, be_u8};
+use nom::combinator::{complete, map, map_parser, map_res};
+use nom::multi::{count, many0, many1};
+use nom::number::complete::{
+    be_f64, be_i16, be_i24, be_i32, be_i64, be_i8, be_u16, be_u32, be_u8, le_u16,
+};
 use nom::sequence::Tuple;
 use nom::IResult;
-use crate::be_i48;
 
 use crate::model::*;
 use crate::varint::be_u64_varint;
@@ -39,7 +42,7 @@ fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
     let (i, (schema_cookie, schema_format_no)) = (be_u32, be_u32).parse(i)?;
     let (i, default_page_cache_size) = be_u32(i)?;
     let (i, no_largest_root_b_tree) = be_u32(i)?;
-    let (i, db_text_encoding) = be_u32(i)?;
+    let (i, db_text_encoding) = map_res(be_u32, |x| x.try_into())(i)?;
     let (i, user_version) = be_u32(i)?;
     let (i, incremental_vacuum_mode) = be_u32(i)?;
     let (i, application_id) = be_u32(i)?;
@@ -150,48 +153,75 @@ fn column_types(i: &[u8]) -> IResult<&[u8], Vec<SerialType>> {
     complete(many0(map(be_u64_varint, SerialType::from)))(i)
 }
 
-fn column_values<'a>(
-    i: &'a [u8],
-    serial_types: &[SerialType],
-) -> IResult<&'a [u8], Vec<Option<Payload>>> {
-    let mut i: &[u8] = i;
-    let mut res = Vec::with_capacity(serial_types.len());
-    for serial_type in serial_types {
-        let (ii, v) = match serial_type {
-            SerialType::Null => Ok((i, None)),
-            SerialType::I8 => map(be_i8, |x| Some(Payload::I8(x)))(i),
-            SerialType::I16 => map(be_i16, |x| Some(Payload::I16(x)))(i),
-            SerialType::I24 => map(be_i24, |x| Some(Payload::I32(x)))(i),
-            SerialType::I32 => map(be_i32, |x| Some(Payload::I32(x)))(i),
-            SerialType::I48 => map(be_i48::be_i48, |x| Some(Payload::I64(x)))(i),
-            SerialType::I64 => map(be_i64, |x| Some(Payload::I64(x)))(i),
-            SerialType::F64 => map(be_f64, |x| Some(Payload::F64(x)))(i),
-            SerialType::Const0 => Ok((i, Some(Payload::I8(0)))),
-            SerialType::Const1 => Ok((i, Some(Payload::I8(0)))),
-            SerialType::Reserved => unimplemented!("reserved"),
-            SerialType::Blob(_) if serial_type.size() == 0 => Ok((i, None)),
-            SerialType::Blob(_) => map(take(serial_type.size()), |x: &[u8]| {
-                Some(Payload::Blob(x.to_vec()))
-            })(i),
-            SerialType::Text(_) if serial_type.size() == 0 => Ok((i, None)),
-            // todo: parse string encodings
-            SerialType::Text(_) => map(take(serial_type.size()), |x: &[u8]| {
+fn text_payload(
+    size: usize,
+    text_encoding: TextEncoding,
+) -> impl FnMut(&[u8]) -> IResult<&[u8], Option<Payload>> {
+    move |i| {
+        match text_encoding {
+            TextEncoding::Utf8 => map(take(size), |x: &[u8]| {
                 let x = String::from_utf8(x.to_vec()).unwrap();
                 Some(Payload::Text(x))
             })(i),
-        }?;
-        i = ii;
-        dbg!(v.clone());
-        res.push(v);
+            TextEncoding::Utf16Le => map(many1(be_u16), |x: Vec<u16>| {
+                let x = String::from_utf16(&x).unwrap();
+                Some(Payload::Text(x))
+            })(i),
+            TextEncoding::Utf16Be => {
+                // fixme: will this even work?
+                // switch endianess as from_utf16 expects little endian
+                map(many1(le_u16), |x: Vec<u16>| {
+                    let x = String::from_utf16(&x).unwrap();
+                    Some(Payload::Text(x))
+                })(i)
+            }
+        }
     }
+}
 
-    Ok((i, res))
+fn blob_payload(size: usize) -> impl FnMut(&[u8]) -> IResult<&[u8], Option<Payload>> {
+    move |i| map(take(size), |x: &[u8]| Some(Payload::Blob(x.to_vec())))(i)
+}
+
+fn column_values<'a, 'b>(
+    text_encoding: TextEncoding,
+    serial_types: &'b [SerialType],
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<Option<Payload>>> + 'b {
+    move |i| {
+        let mut i: &[u8] = i;
+        let mut res = Vec::with_capacity(serial_types.len());
+        for serial_type in serial_types {
+            let (ii, v) = match serial_type {
+                SerialType::Null => Ok((i, None)),
+                SerialType::I8 => map(be_i8, |x| Some(Payload::I8(x)))(i),
+                SerialType::I16 => map(be_i16, |x| Some(Payload::I16(x)))(i),
+                SerialType::I24 => map(be_i24, |x| Some(Payload::I32(x)))(i),
+                SerialType::I32 => map(be_i32, |x| Some(Payload::I32(x)))(i),
+                SerialType::I48 => map(be_i48, |x| Some(Payload::I64(x)))(i),
+                SerialType::I64 => map(be_i64, |x| Some(Payload::I64(x)))(i),
+                SerialType::F64 => map(be_f64, |x| Some(Payload::F64(x)))(i),
+                SerialType::Const0 => Ok((i, Some(Payload::I8(0)))),
+                SerialType::Const1 => Ok((i, Some(Payload::I8(0)))),
+                SerialType::Reserved => unimplemented!("reserved"),
+                SerialType::Blob(_) if serial_type.size() == 0 => Ok((i, None)),
+                SerialType::Blob(_) => blob_payload(serial_type.size())(i),
+                SerialType::Text(_) if serial_type.size() == 0 => Ok((i, None)),
+                SerialType::Text(_) => text_payload(serial_type.size(), text_encoding)(i),
+            }?;
+            i = ii;
+            dbg!(v.clone());
+            res.push(v);
+        }
+
+        Ok((i, res))
+    }
 }
 
 fn index_cell_payload(i: &[u8]) -> IResult<&[u8], IndexCellPayload> {
     let (i, header_size) = be_u64_varint(i)?;
     let (_, column_types) = column_types(&i[0..header_size as usize - 1])?;
-    let (i, column_values) = column_values(&i[header_size as usize - 1..], &column_types)?;
+    let (i, column_values) =
+        column_values(TextEncoding::Utf8, &column_types)(&i[header_size as usize - 1..])?;
     let (i, rowid) = be_u64_varint(i)?;
 
     Ok((
@@ -314,7 +344,8 @@ fn leaf_table_b_tree_page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], LeafT
 fn table_cell_payload(i: &[u8]) -> IResult<&[u8], TableCellPayload> {
     let (i, header_size) = be_u64_varint(i)?;
     let (_, column_types) = column_types(&i[0..header_size as usize - 1])?;
-    let (i, column_values) = column_values(&i[header_size as usize - 1..], &column_types)?;
+    let (i, column_values) =
+        column_values(TextEncoding::Utf8, &column_types)(&i[header_size as usize - 1..])?;
 
     Ok((
         i,
