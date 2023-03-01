@@ -18,6 +18,7 @@ exclude = [
 [dependencies]
 nom = "7.1.1"
 thiserror = "1.0.38"
+memmap2 = "0.5.8"
 
 [dev-dependencies]
 rusqlite = { version = "0.28.0", features = ["bundled"] }

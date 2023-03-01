@@ -1,3 +1,4 @@
+use std::path::Path;
 use crate::be_i48;
 use be_i48::be_i48;
 use nom::branch::alt;
@@ -14,10 +15,14 @@ use nom::IResult;
 use crate::model::*;
 use crate::varint::be_u64_varint;
 
+
+pub const HEADER_SIZE: usize = 100;
+
+/// Full database parser, tries its best to go through the whole thing fully.
+/// NOTE: you should use specific parsers instead or load pages lazily, this is left for reference.
 pub fn database(i: &[u8]) -> IResult<&[u8], Database> {
     let (i, header) = db_header(i)?;
 
-    const HEADER_SIZE: usize = 100;
     let page_size = header.page_size.real_size();
 
     // root page is smaller than the rest
@@ -29,7 +34,7 @@ pub fn database(i: &[u8]) -> IResult<&[u8], Database> {
     Ok((i, Database { header, pages }))
 }
 
-fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
+pub fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
     let (i, _) = tag("SQLite format 3\0")(i)?;
     let (i, page_size) = map(be_u16, PageSize)(i)?;
     let (i, (write_version, read_version)) = (be_u8, be_u8).parse(i)?;
@@ -77,7 +82,7 @@ fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
 }
 
 // todo: fix const generic thing, hack to pass through parameters
-fn page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], Page> {
+pub fn page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], Page> {
     alt((
         map(interior_index_b_tree_page::<OFFSET>, |p| {
             Page::InteriorIndex(p)
@@ -155,36 +160,19 @@ fn column_types(i: &[u8]) -> IResult<&[u8], Vec<SerialType>> {
 
 fn text_payload(
     size: usize,
-    text_encoding: TextEncoding,
 ) -> impl FnMut(&[u8]) -> IResult<&[u8], Option<Payload>> {
     move |i| {
-        match text_encoding {
-            TextEncoding::Utf8 => map(take(size), |x: &[u8]| {
-                let x = String::from_utf8(x.to_vec()).unwrap();
-                Some(Payload::Text(x))
-            })(i),
-            TextEncoding::Utf16Le => map(many1(be_u16), |x: Vec<u16>| {
-                let x = String::from_utf16(&x).unwrap();
-                Some(Payload::Text(x))
-            })(i),
-            TextEncoding::Utf16Be => {
-                // fixme: will this even work?
-                // switch endianess as from_utf16 expects little endian
-                map(many1(le_u16), |x: Vec<u16>| {
-                    let x = String::from_utf16(&x).unwrap();
-                    Some(Payload::Text(x))
-                })(i)
-            }
-        }
+        map(take(size), |x: &[u8]| {
+            Some(Payload::Text(RawText::new(x)))
+        })(i)
     }
 }
 
 fn blob_payload(size: usize) -> impl FnMut(&[u8]) -> IResult<&[u8], Option<Payload>> {
-    move |i| map(take(size), |x: &[u8]| Some(Payload::Blob(x.to_vec())))(i)
+    move |i| map(take(size), |x: &[u8]| Some(Payload::Blob(x)))(i)
 }
 
 fn column_values<'a, 'b>(
-    text_encoding: TextEncoding,
     serial_types: &'b [SerialType],
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<Option<Payload>>> + 'b {
     move |i| {
@@ -206,7 +194,7 @@ fn column_values<'a, 'b>(
                 SerialType::Blob(_) if serial_type.size() == 0 => Ok((i, None)),
                 SerialType::Blob(_) => blob_payload(serial_type.size())(i),
                 SerialType::Text(_) if serial_type.size() == 0 => Ok((i, None)),
-                SerialType::Text(_) => text_payload(serial_type.size(), text_encoding)(i),
+                SerialType::Text(_) => text_payload(serial_type.size())(i),
             }?;
             i = ii;
             dbg!(v.clone());
@@ -221,7 +209,7 @@ fn index_cell_payload(i: &[u8]) -> IResult<&[u8], IndexCellPayload> {
     let (i, header_size) = be_u64_varint(i)?;
     let (_, column_types) = column_types(&i[0..header_size as usize - 1])?;
     let (i, column_values) =
-        column_values(TextEncoding::Utf8, &column_types)(&i[header_size as usize - 1..])?;
+        column_values(&column_types)(&i[header_size as usize - 1..])?;
     let (i, rowid) = be_u64_varint(i)?;
 
     Ok((
@@ -345,7 +333,7 @@ fn table_cell_payload(i: &[u8]) -> IResult<&[u8], TableCellPayload> {
     let (i, header_size) = be_u64_varint(i)?;
     let (_, column_types) = column_types(&i[0..header_size as usize - 1])?;
     let (i, column_values) =
-        column_values(TextEncoding::Utf8, &column_types)(&i[header_size as usize - 1..])?;
+        column_values(&column_types)(&i[header_size as usize - 1..])?;
 
     Ok((
         i,

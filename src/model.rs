@@ -1,9 +1,9 @@
+use std::str::FromStr;
 use crate::error::SQLiteError;
 
-#[allow(dead_code)]
-pub struct Database {
+pub struct Database<'a> {
     pub header: DbHeader,
-    pub pages: Vec<Page>,
+    pub pages: Vec<Page<'a>>,
 }
 
 pub struct DbHeader {
@@ -62,11 +62,11 @@ impl TryFrom<u32> for TextEncoding {
     }
 }
 
-pub enum Page {
-    InteriorIndex(InteriorIndexPage),
-    LeafIndex(LeafIndexPage),
+pub enum Page<'a> {
+    InteriorIndex(InteriorIndexPage<'a>),
+    LeafIndex(LeafIndexPage<'a>),
     InteriorTable(InteriorTablePage),
-    LeafTable(LeafTablePage),
+    LeafTable(LeafTablePage<'a>),
 }
 
 pub struct InteriorPageHeader {
@@ -77,10 +77,10 @@ pub struct InteriorPageHeader {
     pub rightmost_pointer: u32,
 }
 
-pub struct InteriorIndexPage {
+pub struct InteriorIndexPage<'a> {
     pub header: InteriorPageHeader,
     pub cell_pointers: Vec<u16>,
-    pub cells: Vec<InteriorIndexCell>,
+    pub cells: Vec<InteriorIndexCell<'a>>,
 }
 
 pub struct InteriorTablePage {
@@ -89,17 +89,17 @@ pub struct InteriorTablePage {
     pub cells: Vec<InteriorTableCell>,
 }
 
-pub struct IndexCellPayload {
+pub struct IndexCellPayload<'a> {
     pub header_size: u64,
     pub column_types: Vec<SerialType>,
-    pub column_values: Vec<Option<Payload>>,
+    pub column_values: Vec<Option<Payload<'a>>>,
     pub rowid: u64,
 }
 
-pub struct InteriorIndexCell {
+pub struct InteriorIndexCell<'a> {
     pub left_child_page_no: u32,
     pub payload_size: u64,
-    pub payload: IndexCellPayload,
+    pub payload: IndexCellPayload<'a>,
     pub overflow_page_no: Option<u32>,
 }
 
@@ -126,34 +126,34 @@ pub struct LeafPageHeader {
     pub no_fragmented_bytes: u8,
 }
 
-pub struct LeafIndexPage {
+pub struct LeafIndexPage<'a> {
     pub header: LeafPageHeader,
     pub cell_pointers: Vec<u16>,
-    pub cells: Vec<LeafIndexCell>,
+    pub cells: Vec<LeafIndexCell<'a>>,
 }
 
-pub struct LeafIndexCell {
+pub struct LeafIndexCell<'a> {
     pub payload_size: u64,
-    pub payload: IndexCellPayload,
+    pub payload: IndexCellPayload<'a>,
     pub overflow_page_no: Option<u32>,
 }
 
-pub struct LeafTablePage {
+pub struct LeafTablePage<'a> {
     pub header: LeafPageHeader,
     pub cell_pointers: Vec<u16>,
-    pub cells: Vec<LeafTableCell>,
+    pub cells: Vec<LeafTableCell<'a>>,
 }
 
-pub struct TableCellPayload {
+pub struct TableCellPayload<'a> {
     pub header_size: u64,
     pub column_types: Vec<SerialType>,
-    pub column_values: Vec<Option<Payload>>,
+    pub column_values: Vec<Option<Payload<'a>>>,
 }
 
-pub struct LeafTableCell {
+pub struct LeafTableCell<'a> {
     pub payload_size: u64,
     pub rowid: u64,
-    pub payload: TableCellPayload,
+    pub payload: TableCellPayload<'a>,
     pub overflow_page_no: Option<u32>,
 }
 
@@ -217,15 +217,39 @@ impl SerialType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Payload {
+pub struct RawText<'a>(&'a [u8]);
+
+impl<'a> RawText<'a> {
+    pub fn new(v: &'a [u8]) -> Self {
+        RawText(v)
+    }
+
+    pub fn decode(&self, text_encoding: TextEncoding) -> String {
+        match text_encoding {
+            TextEncoding::Utf8 => String::from_utf8_lossy(self.0).to_string(),
+            TextEncoding::Utf16Le => unimplemented!("utf16 not supported yet"),
+            TextEncoding::Utf16Be => unimplemented!("utf16 not supported yet"),
+        }
+    }
+}
+
+impl<'a> From<&'a str> for RawText<'a> {
+    fn from(value: &'a str) -> Self {
+        RawText(value.as_bytes())
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Payload<'a> {
     I8(i8),
     I16(i16),
     I32(i32),
     I64(i64),
     F64(f64),
-    Blob(Vec<u8>),
-    Text(String),
+    Blob(&'a [u8]),
+    Text(RawText<'a>),
 }
 
 #[cfg(test)]
-impl Eq for Payload {}
+impl<'a> Eq for Payload<'a> {}
