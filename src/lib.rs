@@ -6,16 +6,15 @@
 
 extern crate core;
 
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
 use memmap2::{Mmap, MmapOptions};
+use std::fs::File;
+use std::path::Path;
 
 use nom::Finish;
 
 use crate::error::{OwnedBytes, SQLiteError};
-use crate::model::{Database, DbHeader, Page};
-use crate::parser::{database, page, db_header, HEADER_SIZE};
+use crate::model::{DbHeader, Page};
+use crate::parser::{db_header, page, HEADER_SIZE};
 
 mod be_i48;
 pub mod error;
@@ -37,7 +36,7 @@ pub struct Reader<S: AsRef<[u8]>> {
     pub header: DbHeader,
 }
 
-impl<'de> Reader<Mmap> {
+impl Reader<Mmap> {
     /// Open a SQLite database file by memory mapping it.
     ///
     /// # Example
@@ -69,7 +68,7 @@ impl Reader<Vec<u8>> {
     }
 }
 
-impl<'de, S: AsRef<[u8]>> Reader<S> {
+impl<S: AsRef<[u8]>> Reader<S> {
     /// Open a SQLite database from anything that implements AsRef<[u8]>
     ///
     /// # Example
@@ -87,10 +86,7 @@ impl<'de, S: AsRef<[u8]>> Reader<S> {
                 input: OwnedBytes(e.input.to_owned()),
             })?;
 
-        let mut reader = Reader {
-            buf,
-            header,
-        };
+        let reader = Reader { buf, header };
 
         Ok(reader)
     }
@@ -101,16 +97,18 @@ impl<'de, S: AsRef<[u8]>> Reader<S> {
 
         // root page needs to be offsetted for header size
         if pageno == 0 {
-            let page_bytes = &self.buf.as_ref()[page_size * pageno + HEADER_SIZE .. page_size * (pageno + 1)];
-            let (_, page) = page::<HEADER_SIZE>(page_bytes)
-                .finish()
-                .map_err(|e| nom::error::Error {
-                    code: e.code,
-                    input: OwnedBytes(e.input.to_owned()),
-                })?;
+            let page_bytes =
+                &self.buf.as_ref()[page_size * pageno + HEADER_SIZE..page_size * (pageno + 1)];
+            let (_, page) =
+                page::<HEADER_SIZE>(page_bytes)
+                    .finish()
+                    .map_err(|e| nom::error::Error {
+                        code: e.code,
+                        input: OwnedBytes(e.input.to_owned()),
+                    })?;
             Ok(page)
         } else {
-            let page_bytes = &self.buf.as_ref()[page_size * pageno .. page_size * (pageno + 1)];
+            let page_bytes = &self.buf.as_ref()[page_size * pageno..page_size * (pageno + 1)];
             let (_, page) = page::<0>(page_bytes)
                 .finish()
                 .map_err(|e| nom::error::Error {
@@ -124,9 +122,9 @@ impl<'de, S: AsRef<[u8]>> Reader<S> {
 
 #[cfg(test)]
 mod tests {
-    use nom::AsBytes;
     use crate::model::SerialType::{Null, Text, I8};
     use crate::model::{Page, Payload, RawText};
+    use nom::AsBytes;
     use rusqlite::Connection;
     use tempfile::tempdir;
 

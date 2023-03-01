@@ -1,20 +1,16 @@
-use std::path::Path;
 use crate::be_i48;
 use be_i48::be_i48;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take;
 use nom::combinator::{complete, map, map_parser, map_res};
-use nom::multi::{count, many0, many1};
-use nom::number::complete::{
-    be_f64, be_i16, be_i24, be_i32, be_i64, be_i8, be_u16, be_u32, be_u8, le_u16,
-};
+use nom::multi::{count, many0};
+use nom::number::complete::{be_f64, be_i16, be_i24, be_i32, be_i64, be_i8, be_u16, be_u32, be_u8};
 use nom::sequence::Tuple;
 use nom::IResult;
 
 use crate::model::*;
 use crate::varint::be_u64_varint;
-
 
 pub const HEADER_SIZE: usize = 100;
 
@@ -158,14 +154,8 @@ fn column_types(i: &[u8]) -> IResult<&[u8], Vec<SerialType>> {
     complete(many0(map(be_u64_varint, SerialType::from)))(i)
 }
 
-fn text_payload(
-    size: usize,
-) -> impl FnMut(&[u8]) -> IResult<&[u8], Option<Payload>> {
-    move |i| {
-        map(take(size), |x: &[u8]| {
-            Some(Payload::Text(RawText::new(x)))
-        })(i)
-    }
+fn text_payload(size: usize) -> impl FnMut(&[u8]) -> IResult<&[u8], Option<Payload>> {
+    move |i| map(take(size), |x: &[u8]| Some(Payload::Text(RawText::new(x))))(i)
 }
 
 fn blob_payload(size: usize) -> impl FnMut(&[u8]) -> IResult<&[u8], Option<Payload>> {
@@ -208,8 +198,7 @@ fn column_values<'a, 'b>(
 fn index_cell_payload(i: &[u8]) -> IResult<&[u8], IndexCellPayload> {
     let (i, header_size) = be_u64_varint(i)?;
     let (_, column_types) = column_types(&i[0..header_size as usize - 1])?;
-    let (i, column_values) =
-        column_values(&column_types)(&i[header_size as usize - 1..])?;
+    let (i, column_values) = column_values(&column_types)(&i[header_size as usize - 1..])?;
     let (i, rowid) = be_u64_varint(i)?;
 
     Ok((
@@ -332,8 +321,7 @@ fn leaf_table_b_tree_page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], LeafT
 fn table_cell_payload(i: &[u8]) -> IResult<&[u8], TableCellPayload> {
     let (i, header_size) = be_u64_varint(i)?;
     let (_, column_types) = column_types(&i[0..header_size as usize - 1])?;
-    let (i, column_values) =
-        column_values(&column_types)(&i[header_size as usize - 1..])?;
+    let (i, column_values) = column_values(&column_types)(&i[header_size as usize - 1..])?;
 
     Ok((
         i,

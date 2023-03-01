@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use crate::error::SQLiteError;
 
 pub struct Database<'a> {
@@ -238,7 +237,6 @@ impl<'a> From<&'a str> for RawText<'a> {
         RawText(value.as_bytes())
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload<'a> {
