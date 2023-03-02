@@ -2,7 +2,7 @@
     issue_tracker_base_url = "https://github.com/mycelial/sqlite-parser-nom/issues",
     test(no_crate_inject)
 )]
-#![doc = include_str!("../README.md")]
+#![doc = include_str ! ("../README.md")]
 
 extern crate core;
 
@@ -122,9 +122,8 @@ impl<S: AsRef<[u8]>> Reader<S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::model::Page;
     use crate::model::SerialType::{Null, Text, I8};
-    use crate::model::{Page, Payload, RawText};
-    use nom::AsBytes;
     use rusqlite::Connection;
     use tempfile::tempdir;
 
@@ -158,13 +157,13 @@ mod tests {
                 assert_eq!(
                     p.cells.first().unwrap().payload.column_values,
                     vec![
-                        Some(Payload::Text("table".into())),
-                        Some(Payload::Text("test".into())),
-                        Some(Payload::Text("test".into())),
-                        Some(Payload::I8(2)),
-                        Some(Payload::Text(
+                        Some("table".into()),
+                        Some("test".into()),
+                        Some("test".into()),
+                        Some(2i8.into()),
+                        Some(
                             "CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)".into()
-                        )),
+                        ),
                     ]
                 );
             }
@@ -208,7 +207,7 @@ mod tests {
                 );
                 assert_eq!(
                     p.cells.first().unwrap().payload.column_values,
-                    vec![None, Some(Payload::Text("tjena tjena".into())),]
+                    vec![None, Some("tjena tjena".into())]
                 );
             }
             _ => unreachable!("root page should be table leaf page"),

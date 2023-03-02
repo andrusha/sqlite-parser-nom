@@ -249,5 +249,47 @@ pub enum Payload<'a> {
     Text(RawText<'a>),
 }
 
+impl<'a> From<&'a str> for Payload<'a> {
+    fn from(value: &'a str) -> Self {
+        Payload::Text(value.into())
+    }
+}
+
+impl<'a> From<&'a [u8]> for Payload<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        Payload::Blob(value)
+    }
+}
+
+impl<'a> From<i8> for Payload<'a> {
+    fn from(value: i8) -> Self {
+        Payload::I8(value)
+    }
+}
+
+impl<'a> From<i16> for Payload<'a> {
+    fn from(value: i16) -> Self {
+        Payload::I16(value)
+    }
+}
+
+impl<'a> From<i32> for Payload<'a> {
+    fn from(value: i32) -> Self {
+        Payload::I32(value)
+    }
+}
+
+impl<'a> From<i64> for Payload<'a> {
+    fn from(value: i64) -> Self {
+        Payload::I64(value)
+    }
+}
+
+impl<'a> From<f64> for Payload<'a> {
+    fn from(value: f64) -> Self {
+        Payload::F64(value)
+    }
+}
+
 #[cfg(test)]
 impl<'a> Eq for Payload<'a> {}
