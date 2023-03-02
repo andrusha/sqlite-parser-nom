@@ -20,12 +20,12 @@ sqlite-parser-nom = "0.1.0"
 Load and parse file in memory:
 
 ```rust no_run
-use sqlite_parser_nom::open;
+use sqlite_parser_nom::Reader;
 use sqlite_parser_nom::error;
 
 fn main() -> Result<(), error::SQLiteError> {
-    let database = sqlite_parser_nom::open("database.sqlite3")?;
-    println!("{}", database.pages.len());
+  let reader = Reader::open_readfile("sample/sakila.db")?;
+    println!("{}", reader.header.db_size);
 
     Ok(())
 }

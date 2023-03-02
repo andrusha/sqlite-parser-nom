@@ -6,15 +6,15 @@
 
 extern crate core;
 
+use memmap2::{Mmap, MmapOptions};
 use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 
 use nom::Finish;
 
 use crate::error::{OwnedBytes, SQLiteError};
-use crate::model::Database;
-use crate::parser::database;
+use crate::model::{DbHeader, Page};
+use crate::parser::{db_header, page, HEADER_SIZE};
 
 mod be_i48;
 pub mod error;
@@ -28,36 +28,103 @@ todo: determine when overflow page no is used
 todo: how page size computation works?
 todo: test with more records
 todo: how freelist pages work?
-todo: add mmap option for reading
 */
 
-/// Loads the whole file in memory, does copying while parsing as well
-/// hence, requires at least 2x of free memory of original file size.
-///
-/// Recommended way is to use specific parsers based on your needs instead.
-///
-/// ```
-/// let database = sqlite_parser_nom::open("database.sqlite3");
-/// ```
-// todo: pass file as bytes and take page-by-page from it to avoid reading all bytes
-pub fn open<P: AsRef<Path>>(path: P) -> Result<Database, SQLiteError> {
-    let mut file = File::open(path)?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
+// todo: use bufreader
+pub struct Reader<S: AsRef<[u8]>> {
+    buf: S,
+    pub header: DbHeader,
+}
 
-    let (_, db) = database(bytes.as_slice())
-        .finish()
-        .map_err(|e| nom::error::Error {
-            code: e.code,
-            input: OwnedBytes(e.input.to_owned()),
-        })?;
-    Ok(db)
+impl Reader<Mmap> {
+    /// Open a SQLite database file by memory mapping it.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let reader = sqlite_parser_nom::Reader::open_mmap("sample/sakila.db").unwrap();
+    /// ```
+    pub fn open_mmap<P: AsRef<Path>>(database: P) -> Result<Reader<Mmap>, SQLiteError> {
+        let file_read = File::open(database)?;
+        let mmap = unsafe { MmapOptions::new().map(&file_read) }?;
+        Reader::from_source(mmap)
+    }
+}
+
+impl Reader<Vec<u8>> {
+    /// Open a SQLite database file by loading it into memory.
+    /// Payloads are not copied until use, but all the metadata must be.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let reader = sqlite_parser_nom::Reader::open_readfile("sample/sakila.db").unwrap();
+    /// ```
+    pub fn open_readfile<P: AsRef<Path>>(database: P) -> Result<Reader<Vec<u8>>, SQLiteError> {
+        use std::fs;
+
+        let buf: Vec<u8> = fs::read(&database)?;
+        Reader::from_source(buf)
+    }
+}
+
+impl<S: AsRef<[u8]>> Reader<S> {
+    /// Open a SQLite database from anything that implements AsRef<[u8]>
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::fs;
+    /// let buf = fs::read("sample/sakila.db").unwrap();
+    /// let reader = sqlite_parser_nom::Reader::from_source(buf).unwrap();
+    /// ```
+    pub fn from_source(buf: S) -> Result<Reader<S>, SQLiteError> {
+        let (_, header) = db_header(buf.as_ref())
+            .finish()
+            .map_err(|e| nom::error::Error {
+                code: e.code,
+                input: OwnedBytes(e.input.to_owned()),
+            })?;
+
+        let reader = Reader { buf, header };
+
+        Ok(reader)
+    }
+
+    pub fn get_page(&self, pageno: u32) -> Result<Page, SQLiteError> {
+        let page_size = self.header.page_size.real_size();
+        let pageno = pageno as usize;
+
+        // root page needs to be offsetted for header size
+        if pageno == 0 {
+            let page_bytes =
+                &self.buf.as_ref()[page_size * pageno + HEADER_SIZE..page_size * (pageno + 1)];
+            let (_, page) =
+                page::<HEADER_SIZE>(page_bytes)
+                    .finish()
+                    .map_err(|e| nom::error::Error {
+                        code: e.code,
+                        input: OwnedBytes(e.input.to_owned()),
+                    })?;
+            Ok(page)
+        } else {
+            let page_bytes = &self.buf.as_ref()[page_size * pageno..page_size * (pageno + 1)];
+            let (_, page) = page::<0>(page_bytes)
+                .finish()
+                .map_err(|e| nom::error::Error {
+                    code: e.code,
+                    input: OwnedBytes(e.input.to_owned()),
+                })?;
+            Ok(page)
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::model::SerialType::{Null, Text, I8};
-    use crate::model::{Page, Payload};
+    use crate::model::{Page, Payload, RawText};
+    use nom::AsBytes;
     use rusqlite::Connection;
     use tempfile::tempdir;
 
@@ -75,12 +142,11 @@ mod tests {
         )
         .unwrap();
         conn.close().unwrap();
-        let result = open(&path).unwrap();
+        let reader = Reader::open_readfile(&path).unwrap();
 
-        assert_eq!(result.header.page_size.real_size(), 4096);
-        assert_eq!(result.pages.len(), 2); // root page + 1 empty page
+        assert_eq!(reader.header.page_size.real_size(), 4096);
 
-        match result.pages.first().unwrap() {
+        match reader.get_page(0).unwrap() {
             Page::LeafTable(p) => {
                 assert_eq!(p.header.no_cells, 1);
                 assert_eq!(p.cells.len(), 1);
@@ -92,13 +158,12 @@ mod tests {
                 assert_eq!(
                     p.cells.first().unwrap().payload.column_values,
                     vec![
-                        Some(Payload::Text("table".to_string())),
-                        Some(Payload::Text("test".to_string())),
-                        Some(Payload::Text("test".to_string())),
+                        Some(Payload::Text("table".into())),
+                        Some(Payload::Text("test".into())),
+                        Some(Payload::Text("test".into())),
                         Some(Payload::I8(2)),
                         Some(Payload::Text(
-                            "CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)"
-                                .to_string()
+                            "CREATE TABLE test (id INTEGER PRIMARY KEY, foo TEXT NOT NULL)".into()
                         )),
                     ]
                 );
@@ -106,7 +171,7 @@ mod tests {
             _ => unreachable!("root page should be table leaf page"),
         }
 
-        match result.pages.last().unwrap() {
+        match reader.get_page(1).unwrap() {
             Page::LeafTable(p) => {
                 assert_eq!(p.header.no_cells, 0);
                 assert_eq!(p.cells.len(), 0);
@@ -128,11 +193,10 @@ mod tests {
         conn.execute("INSERT INTO test VALUES (42, 'tjena tjena')", ())
             .unwrap();
         conn.close().unwrap();
-        let result = open(&path).unwrap();
 
-        assert_eq!(result.pages.len(), 2); // root page + 1st page with table content
+        let reader = Reader::open_mmap(&path).unwrap();
 
-        match result.pages.last().unwrap() {
+        match reader.get_page(1).unwrap() {
             Page::LeafTable(p) => {
                 assert_eq!(p.header.no_cells, 1);
                 assert_eq!(p.cells.len(), 1);
@@ -144,7 +208,7 @@ mod tests {
                 );
                 assert_eq!(
                     p.cells.first().unwrap().payload.column_values,
-                    vec![None, Some(Payload::Text("tjena tjena".to_string())),]
+                    vec![None, Some(Payload::Text("tjena tjena".into())),]
                 );
             }
             _ => unreachable!("root page should be table leaf page"),
