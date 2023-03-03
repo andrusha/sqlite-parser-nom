@@ -14,21 +14,30 @@ In your Cargo.toml:
 
 ```toml
 [dependencies]
-sqlite-parser-nom = "0.1.0"
+sqlite-parser-nom = "1.0.0"
 ```
 
+### Lazily parse the whole file
 Load and parse file in memory:
 
-```rust no_run
+```rust
 use sqlite_parser_nom::Reader;
 use sqlite_parser_nom::error;
 
 fn main() -> Result<(), error::SQLiteError> {
-  let reader = Reader::open_readfile("sample/sakila.db")?;
+  let reader = Reader::open_mmap("sample/sakila.db")?;
     println!("{}", reader.header.db_size);
 
     Ok(())
 }
+```
+
+### Parse some bytes
+
+```rust
+use sqlite_parser_nom::parser::page;
+
+
 ```
 
 Check the documentation and [parser](./src/parser.rs) to chose correct parser for your task.

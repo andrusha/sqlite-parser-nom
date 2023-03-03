@@ -6,13 +6,13 @@ use nom::bytes::complete::take;
 use nom::combinator::{complete, map, map_parser, map_res};
 use nom::multi::{count, many0};
 use nom::number::complete::{be_f64, be_i16, be_i24, be_i32, be_i64, be_i8, be_u16, be_u32, be_u8};
-use nom::sequence::Tuple;
+use nom::sequence::{pair, Tuple};
 use nom::IResult;
 
 use crate::model::*;
 use crate::varint::be_u64_varint;
 
-pub const HEADER_SIZE: usize = 100;
+const HEADER_SIZE: usize = 100;
 
 /// Full database parser, tries its best to go through the whole thing fully.
 /// NOTE: you should use specific parsers instead or load pages lazily, this is left for reference.
@@ -21,10 +21,11 @@ pub fn database(i: &[u8]) -> IResult<&[u8], Database> {
 
     let page_size = header.page_size.real_size();
 
-    // root page is smaller than the rest
-    let (i, root_page) = map_parser(take(page_size - HEADER_SIZE), page::<HEADER_SIZE>)(i)?;
+    let root_page = map_parser(take(page_size - HEADER_SIZE), page_generic(HEADER_SIZE));
+    let pages = complete(many0(map_parser(take(page_size), page_generic(0))));
 
-    let (i, mut pages) = complete(many0(map_parser(take(page_size), page::<0>)))(i)?;
+    let (i, (root_page, mut pages)) = complete(pair(root_page, pages))(i)?;
+
     pages.insert(0, root_page);
 
     Ok((i, Database { header, pages }))
@@ -77,18 +78,31 @@ pub fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
     ))
 }
 
+pub fn root_page(i: &[u8]) -> IResult<&[u8], Page> {
+    let shrunk_page = &i[HEADER_SIZE..];
+    page_generic(HEADER_SIZE)(shrunk_page)
+}
+
+pub fn page(i: &[u8]) -> IResult<&[u8], Page> {
+    page_generic(0)(i)
+}
+
 // todo: fix const generic thing, hack to pass through parameters
-pub fn page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], Page> {
-    alt((
-        map(interior_index_b_tree_page::<OFFSET>, |p| {
-            Page::InteriorIndex(p)
-        }),
-        map(leaf_index_b_tree_page::<OFFSET>, Page::LeafIndex),
-        map(interior_table_b_tree_page::<OFFSET>, |p| {
-            Page::InteriorTable(p)
-        }),
-        map(leaf_table_b_tree_page::<OFFSET>, Page::LeafTable),
-    ))(i)
+fn page_generic(page_start_offset: usize) -> impl FnMut(&[u8]) -> IResult<&[u8], Page> {
+    move |i| {
+        alt((
+            map(
+                interior_index_b_tree_page(page_start_offset),
+                Page::InteriorIndex,
+            ),
+            map(leaf_index_b_tree_page(page_start_offset), Page::LeafIndex),
+            map(
+                interior_table_b_tree_page(page_start_offset),
+                Page::InteriorTable,
+            ),
+            map(leaf_table_b_tree_page(page_start_offset), Page::LeafTable),
+        ))(i)
+    }
 }
 
 fn interior_page_header(i: &[u8]) -> IResult<&[u8], InteriorPageHeader> {
@@ -127,25 +141,30 @@ fn leaf_page_header(i: &[u8]) -> IResult<&[u8], LeafPageHeader> {
     ))
 }
 
-fn interior_index_b_tree_page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], InteriorIndexPage> {
-    let (ii, _) = tag([0x02u8])(i)?;
-    let (ii, header) = interior_page_header(ii)?;
-    let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
+fn interior_index_b_tree_page(
+    page_start_offset: usize,
+) -> impl FnMut(&[u8]) -> IResult<&[u8], InteriorIndexPage> {
+    move |i| {
+        let (ii, _) = tag([0x02u8])(i)?;
+        let (ii, header) = interior_page_header(ii)?;
+        let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
 
-    let mut cells = Vec::with_capacity(cell_pointers.len());
-    for &ptr in cell_pointers.iter() {
-        let (_, cell) = interior_index_cell(&i[(ptr as usize - OFFSET)..])?;
-        cells.push(cell);
+        let mut cells = Vec::with_capacity(cell_pointers.len());
+        for &ptr in cell_pointers.iter() {
+            let cell_offset = ptr as usize - page_start_offset;
+            let (_, cell) = interior_index_cell(&i[cell_offset..])?;
+            cells.push(cell);
+        }
+
+        Ok((
+            ii,
+            InteriorIndexPage {
+                header,
+                cell_pointers,
+                cells,
+            },
+        ))
     }
-
-    Ok((
-        ii,
-        InteriorIndexPage {
-            header,
-            cell_pointers,
-            cells,
-        },
-    ))
 }
 
 /// Expects to get exactly as many bytes in input as it will consume
@@ -228,25 +247,30 @@ fn interior_index_cell(i: &[u8]) -> IResult<&[u8], InteriorIndexCell> {
     ))
 }
 
-fn interior_table_b_tree_page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], InteriorTablePage> {
-    let (ii, _) = tag([0x05u8])(i)?;
-    let (ii, header) = interior_page_header(ii)?;
-    let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
+fn interior_table_b_tree_page(
+    page_start_offset: usize,
+) -> impl FnMut(&[u8]) -> IResult<&[u8], InteriorTablePage> {
+    move |i| {
+        let (ii, _) = tag([0x05u8])(i)?;
+        let (ii, header) = interior_page_header(ii)?;
+        let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
 
-    let mut cells = Vec::with_capacity(cell_pointers.len());
-    for &ptr in cell_pointers.iter() {
-        let (_, cell) = interior_table_cell(&i[(ptr as usize - OFFSET)..])?;
-        cells.push(cell);
+        let mut cells = Vec::with_capacity(cell_pointers.len());
+        for &ptr in cell_pointers.iter() {
+            let cell_offset = ptr as usize - page_start_offset;
+            let (_, cell) = interior_table_cell(&i[cell_offset..])?;
+            cells.push(cell);
+        }
+
+        Ok((
+            ii,
+            InteriorTablePage {
+                header,
+                cell_pointers,
+                cells,
+            },
+        ))
     }
-
-    Ok((
-        ii,
-        InteriorTablePage {
-            header,
-            cell_pointers,
-            cells,
-        },
-    ))
 }
 
 fn interior_table_cell(i: &[u8]) -> IResult<&[u8], InteriorTableCell> {
@@ -262,25 +286,30 @@ fn interior_table_cell(i: &[u8]) -> IResult<&[u8], InteriorTableCell> {
     ))
 }
 
-fn leaf_index_b_tree_page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], LeafIndexPage> {
-    let (ii, _) = tag([0x0au8])(i)?;
-    let (ii, header) = leaf_page_header(ii)?;
-    let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
+fn leaf_index_b_tree_page(
+    page_start_offset: usize,
+) -> impl FnMut(&[u8]) -> IResult<&[u8], LeafIndexPage> {
+    move |i| {
+        let (ii, _) = tag([0x0au8])(i)?;
+        let (ii, header) = leaf_page_header(ii)?;
+        let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
 
-    let mut cells = Vec::with_capacity(cell_pointers.len());
-    for &ptr in cell_pointers.iter() {
-        let (_, cell) = leaf_index_cell(&i[(ptr as usize - OFFSET)..])?;
-        cells.push(cell);
+        let mut cells = Vec::with_capacity(cell_pointers.len());
+        for &ptr in cell_pointers.iter() {
+            let cell_offset = ptr as usize - page_start_offset;
+            let (_, cell) = leaf_index_cell(&i[cell_offset..])?;
+            cells.push(cell);
+        }
+
+        Ok((
+            ii,
+            LeafIndexPage {
+                header,
+                cell_pointers,
+                cells,
+            },
+        ))
     }
-
-    Ok((
-        ii,
-        LeafIndexPage {
-            header,
-            cell_pointers,
-            cells,
-        },
-    ))
 }
 
 fn leaf_index_cell(i: &[u8]) -> IResult<&[u8], LeafIndexCell> {
@@ -297,25 +326,30 @@ fn leaf_index_cell(i: &[u8]) -> IResult<&[u8], LeafIndexCell> {
     ))
 }
 
-fn leaf_table_b_tree_page<const OFFSET: usize>(i: &[u8]) -> IResult<&[u8], LeafTablePage> {
-    let (ii, _) = tag([0x0du8])(i)?;
-    let (ii, header) = leaf_page_header(ii)?;
-    let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
+fn leaf_table_b_tree_page(
+    page_start_offset: usize,
+) -> impl FnMut(&[u8]) -> IResult<&[u8], LeafTablePage> {
+    move |i| {
+        let (ii, _) = tag([0x0du8])(i)?;
+        let (ii, header) = leaf_page_header(ii)?;
+        let (ii, cell_pointers) = count(be_u16, header.no_cells.into())(ii)?;
 
-    let mut cells = Vec::with_capacity(cell_pointers.len());
-    for &ptr in cell_pointers.iter() {
-        let (_, cell) = leaf_table_cell(&i[(ptr as usize - OFFSET)..])?;
-        cells.push(cell);
+        let mut cells = Vec::with_capacity(cell_pointers.len());
+        for &ptr in cell_pointers.iter() {
+            let cell_offset = ptr as usize - page_start_offset;
+            let (_, cell) = leaf_table_cell(&i[cell_offset..])?;
+            cells.push(cell);
+        }
+
+        Ok((
+            ii,
+            LeafTablePage {
+                header,
+                cell_pointers,
+                cells,
+            },
+        ))
     }
-
-    Ok((
-        ii,
-        LeafTablePage {
-            header,
-            cell_pointers,
-            cells,
-        },
-    ))
 }
 
 fn table_cell_payload(i: &[u8]) -> IResult<&[u8], TableCellPayload> {

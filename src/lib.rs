@@ -14,7 +14,7 @@ use nom::Finish;
 
 use crate::error::{OwnedBytes, SQLiteError};
 use crate::model::{DbHeader, Page};
-use crate::parser::{db_header, page, HEADER_SIZE};
+use crate::parser::{db_header, page, root_page};
 
 mod be_i48;
 pub mod error;
@@ -95,28 +95,19 @@ impl<S: AsRef<[u8]>> Reader<S> {
         let page_size = self.header.page_size.real_size();
         let pageno = pageno as usize;
 
-        // root page needs to be offsetted for header size
-        if pageno == 0 {
-            let page_bytes =
-                &self.buf.as_ref()[page_size * pageno + HEADER_SIZE..page_size * (pageno + 1)];
-            let (_, page) =
-                page::<HEADER_SIZE>(page_bytes)
-                    .finish()
-                    .map_err(|e| nom::error::Error {
-                        code: e.code,
-                        input: OwnedBytes(e.input.to_owned()),
-                    })?;
-            Ok(page)
+        let page_bytes = &self.buf.as_ref()[page_size * pageno..page_size * (pageno + 1)];
+        let page = if pageno == 0 {
+            root_page(page_bytes)
         } else {
-            let page_bytes = &self.buf.as_ref()[page_size * pageno..page_size * (pageno + 1)];
-            let (_, page) = page::<0>(page_bytes)
-                .finish()
-                .map_err(|e| nom::error::Error {
-                    code: e.code,
-                    input: OwnedBytes(e.input.to_owned()),
-                })?;
-            Ok(page)
-        }
+            page(page_bytes)
+        };
+
+        let (_, page) = page.finish().map_err(|e| nom::error::Error {
+            code: e.code,
+            input: OwnedBytes(e.input.to_owned()),
+        })?;
+
+        Ok(page)
     }
 }
 
