@@ -12,6 +12,7 @@ pub enum SQLiteError {
     UnknownTextEncodingError(u32),
 }
 
+/// Used so the error could outlive its input
 #[derive(Debug)]
 pub struct OwnedBytes(pub Vec<u8>);
 

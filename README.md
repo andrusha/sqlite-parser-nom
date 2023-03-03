@@ -17,7 +17,7 @@ In your Cargo.toml:
 sqlite-parser-nom = "1.0.0"
 ```
 
-### Lazily parse the whole file
+### Lazily parse the file
 Load and parse file in memory:
 
 ```rust
@@ -25,19 +25,34 @@ use sqlite_parser_nom::Reader;
 use sqlite_parser_nom::error;
 
 fn main() -> Result<(), error::SQLiteError> {
-  let reader = Reader::open_mmap("sample/sakila.db")?;
+    let reader = Reader::open_mmap("sample/sakila.db")?;
     println!("{}", reader.header.db_size);
 
     Ok(())
 }
 ```
 
-### Parse some bytes
+### Parse a slice
+
+You can also use parsers directly
 
 ```rust
-use sqlite_parser_nom::parser::page;
+use nom::Finish;
+use sqlite_parser_nom::parser;
+use sqlite_parser_nom::model;
+use sqlite_parser_nom::error;
 
+fn do_something_with_page(i: &[u8]) -> Result<model::Page, error::SQLiteError> {
+    let (_, page) = parser::page(i)
+        .finish()
+        // the cast is necessary here, so the error could outlive the input 
+        .map_err(|e| nom::error::Error {
+            code: e.code,
+            input: error::OwnedBytes(e.input.to_owned()),
+        })?;
 
+    Ok(page)
+}
 ```
 
 Check the documentation and [parser](./src/parser.rs) to chose correct parser for your task.

@@ -14,8 +14,8 @@ use crate::varint::be_u64_varint;
 
 const HEADER_SIZE: usize = 100;
 
-/// Full database parser, tries its best to go through the whole thing fully.
-/// NOTE: you should use specific parsers instead or load pages lazily, this is left for reference.
+/// Goes through the whole input page-by-page
+/// NOTE: you should use specific parsers or Reader to parse file lazily
 pub fn database(i: &[u8]) -> IResult<&[u8], Database> {
     let (i, header) = db_header(i)?;
 
@@ -31,6 +31,7 @@ pub fn database(i: &[u8]) -> IResult<&[u8], Database> {
     Ok((i, Database { header, pages }))
 }
 
+/// File header parser. Page size and text encoding are required for the rest to work correctly.
 pub fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
     let (i, _) = tag("SQLite format 3\0")(i)?;
     let (i, page_size) = map(be_u16, PageSize)(i)?;
@@ -78,11 +79,13 @@ pub fn db_header(i: &[u8]) -> IResult<&[u8], DbHeader> {
     ))
 }
 
+/// The page number 0, which comes right after the header. Input assumed to contain the header.
 pub fn root_page(i: &[u8]) -> IResult<&[u8], Page> {
     let shrunk_page = &i[HEADER_SIZE..];
     page_generic(HEADER_SIZE)(shrunk_page)
 }
 
+/// All the rest of pages, pageno >0.
 pub fn page(i: &[u8]) -> IResult<&[u8], Page> {
     page_generic(0)(i)
 }
